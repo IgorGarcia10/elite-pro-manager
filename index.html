@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Elite Pro Manager</title>
+    <title>Elite Pro Manager - Fúria FS</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,10 +14,8 @@
         .tab-active { color: #38bdf8; border-bottom: 3px solid #38bdf8; }
         .num-font { font-family: 'Courier New', Courier, monospace; }
         .glass { background: rgba(15, 15, 15, 0.98); border: 1px solid rgba(255,255,255,0.05); }
-        
         .btn-cobalt { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
-        .btn-chumbo { background: linear-gradient(135deg, #334155 0%, #64748b 100%); box-shadow: 0 0 15px rgba(100, 116, 139, 0.3); }
-        
+        .btn-red { background: linear-gradient(135deg, #991b1b 0%, #ef4444 100%); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
         .animate-pulse-red { animation: pulse 1.5s infinite; color: #ff4d4d; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
         input { font-size: 16px !important; }
@@ -28,9 +26,15 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-        const API_URL = "https://script.google.com/macros/s/AKfycbwp7nIFr-aCxCqZvgsMxh3hEm3D_5O4dW3_l8Josd8Y0qkPsN6eHDi4U3tbM75D5tn4/exec";
+        
+        // LINK ATUALIZADO DA SUA NOVA IMPLANTAÇÃO
+        const API_URL = "https://script.google.com/macros/s/AKfycbzF60aNU3ZnahsFLWWH39oUgHzrH0xzwLg_pfmNSIMbO_fsDhNEIbhFoeIogNSUS7FvGw/exec";
 
         const App = () => {
+            const [isAuthorized, setIsAuthorized] = useState(localStorage.getItem('auth_elite') === 'true');
+            const [pinInput, setPinInput] = useState("");
+            const [loginError, setLoginError] = useState(false);
+
             const [activeTab, setActiveTab] = useState('match');
             const [athletes, setAthletes] = useState([]);
             const [rankingData, setRankingData] = useState([]);
@@ -48,16 +52,22 @@
             const [isRunning, setIsRunning] = useState(false);
             const [isEditingTime, setIsEditingTime] = useState(false);
 
+            // Carrega dados básicos após login
             useEffect(() => {
-                setLoading(true);
-                fetch(API_URL).then(res => res.json()).then(data => {
-                    setAthletes(data.map((n, i) => ({ id: i.toString(), name: n })));
-                    setLoading(false);
-                }).catch(() => setLoading(false));
-            }, []);
+                if(isAuthorized) {
+                    setLoading(true);
+                    fetch(API_URL).then(res => res.json()).then(data => {
+                        if(Array.isArray(data)) {
+                            setAthletes(data.map((n, i) => ({ id: i.toString(), name: n })));
+                        }
+                        setLoading(false);
+                    }).catch(() => setLoading(false));
+                }
+            }, [isAuthorized]);
 
+            // Carrega ranking e histórico conforme navegação
             useEffect(() => {
-                if(activeTab === 'ranking' || activeTab === 'placares') {
+                if(isAuthorized && (activeTab === 'ranking' || activeTab === 'placares')) {
                     setLoading(true);
                     const action = activeTab === 'ranking' ? 'getRanking' : 'getResults';
                     fetch(`${API_URL}?action=${action}`).then(res => res.json()).then(data => {
@@ -65,18 +75,53 @@
                         setLoading(false);
                     });
                 }
-            }, [activeTab]);
+            }, [activeTab, isAuthorized]);
 
+            // Timer do jogo
             useEffect(() => {
                 let interval;
                 if (isRunning && timeLeft > 0) interval = setInterval(() => setTimeLeft(p => p - 1), 1000);
                 return () => clearInterval(interval);
             }, [isRunning, timeLeft]);
 
+            // LOGIN SEGURO: VALIDA NO GOOGLE SCRIPT
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                try {
+                    const response = await fetch(`${API_URL}?action=checkLogin&pin=${pinInput}`);
+                    const data = await response.json();
+                    
+                    if(data.auth === true) {
+                        setIsAuthorized(true);
+                        localStorage.setItem('auth_elite', 'true');
+                    } else {
+                        setLoginError(true);
+                        setPinInput("");
+                        setTimeout(() => setLoginError(false), 2000);
+                    }
+                } catch (err) {
+                    alert("Erro ao conectar ao servidor. Verifique o link da API.");
+                }
+                setLoading(false);
+            };
+
             const formatTime = (s) => {
                 const m = Math.floor(s / 60);
                 const seg = s % 60;
                 return `${m.toString().padStart(2, '0')}:${seg.toString().padStart(2, '0')}`;
+            };
+
+            const formatDate = (isoString) => {
+                try {
+                    const d = new Date(isoString);
+                    if (isNaN(d.getTime())) return isoString; 
+                    return d.toLocaleString('pt-BR', { 
+                        timeZone: 'America/Sao_Paulo',
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                    }).replace(',', ' -');
+                } catch(e) { return isoString; }
             };
 
             const handleManualTime = (val) => {
@@ -104,7 +149,7 @@
                     if (ath) statsDetalhadas[ath.name] = { g: matchStats[id].goals || 0, a: matchStats[id].assists || 0 };
                 });
 
-                const payload = { timestamp: new Date().toLocaleString('pt-BR'), teamA, teamB, scoreA, scoreB, foulsA, foulsB, elenco: athletes.map(a => a.name), stats: statsDetalhadas };
+                const payload = { timestamp: new Date().toISOString(), teamA, teamB, scoreA, scoreB, foulsA, foulsB, elenco: athletes.map(a => a.name), stats: statsDetalhadas };
 
                 try {
                     await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
@@ -114,12 +159,39 @@
                 setLoading(false);
             };
 
+            if (!isAuthorized) {
+                return (
+                    <div className="h-screen w-full flex flex-col items-center justify-center p-6 bg-black">
+                        <div className="w-full max-w-sm glass p-8 rounded-[3rem] text-center border-blue-900/20 border-2">
+                            <h1 className="text-3xl font-black italic text-blue-500 mb-2 italic">ELITE PRO</h1>
+                            <p className="text-neutral-500 text-[10px] uppercase tracking-[0.3em] mb-10">Controle de Acesso</p>
+                            
+                            <form onSubmit={handleLogin} className="space-y-6">
+                                <input 
+                                    type="password" 
+                                    inputMode="numeric"
+                                    value={pinInput}
+                                    onChange={(e) => setPinInput(e.target.value)}
+                                    placeholder="PIN" 
+                                    className={`w-full bg-neutral-900/50 border-2 ${loginError ? 'border-red-600' : 'border-white/10'} p-6 rounded-2xl text-center text-3xl font-black tracking-[0.5em] outline-none focus:border-blue-500 transition-all`}
+                                    autoFocus
+                                />
+                                <button type="submit" disabled={loading} className="w-full btn-cobalt text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all">
+                                    {loading ? 'Validando...' : 'Entrar'}
+                                </button>
+                                {loginError && <p className="text-red-500 text-[10px] font-black uppercase animate-bounce mt-4">PIN INCORRETO</p>}
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+
             return (
                 <div className="min-h-screen pb-24 flex flex-col items-center">
                     <nav className="w-full flex justify-around bg-neutral-900/90 backdrop-blur sticky top-0 z-50 border-b border-white/5">
                         {['match', 'roster', 'placares', 'ranking'].map(t => (
                             <button key={t} onClick={() => setActiveTab(t)} className={`py-4 px-1 text-[10px] font-black uppercase tracking-tighter ${activeTab === t ? 'tab-active' : 'text-neutral-500'}`}>
-                                {t === 'match' ? 'Jogo' : t === 'roster' ? 'Jogadores' : t === 'placares' ? 'Histórico' : 'Estatísticas'}
+                                {t === 'match' ? 'Jogo' : t === 'roster' ? 'Jogadores' : t === 'placares' ? 'Histórico' : 'Ranking'}
                             </button>
                         ))}
                     </nav>
@@ -158,11 +230,11 @@
                                         </div>
                                         <div className="pt-12 font-black italic opacity-10 text-xs">VS</div>
                                         <div className="w-[45%] text-center">
-                                            <input value={teamB} onChange={e => setTeamB(e.target.value.toUpperCase())} className="bg-transparent text-lg font-black text-slate-300 w-full text-center outline-none mb-1" />
-                                            <div className="text-7xl font-black my-2 leading-none italic">{scoreB}</div>
+                                            <input value={teamB} onChange={e => setTeamB(e.target.value.toUpperCase())} className="bg-transparent text-lg font-black text-red-400 w-full text-center outline-none mb-1" />
+                                            <div className="text-7xl font-black my-2 leading-none italic text-red-100">{scoreB}</div>
                                             <div className="flex justify-center gap-1 mb-4">
                                                 <button onClick={() => setScoreB(Math.max(0,scoreB-1))} className="w-10 h-10 bg-neutral-800 rounded-lg">-</button>
-                                                <button onClick={() => setScoreB(scoreB+1)} className="w-10 h-10 btn-chumbo text-white rounded-lg font-black">+</button>
+                                                <button onClick={() => setScoreB(scoreB+1)} className="w-10 h-10 btn-red text-white rounded-lg font-black">+</button>
                                             </div>
                                             <div className="bg-black/60 p-2 rounded-2xl border border-white/5">
                                                 <div className={`text-xl font-black mb-2 ${foulsB >= 5 ? 'animate-pulse-red' : 'text-neutral-400'}`}>Faltas: {foulsB}</div>
@@ -193,19 +265,20 @@
                                                 <div className="flex items-center gap-2">
                                                     <button onClick={() => updateStat(a.id, 'assists', -1)} className="w-7 h-7 bg-neutral-800 rounded-lg">-</button>
                                                     <span className="text-xs font-black w-4 text-center">{matchStats[a.id]?.assists || 0}</span>
-                                                    <button onClick={() => updateStat(a.id, 'assists', 1)} className="w-7 h-7 btn-chumbo text-white rounded-lg font-black">+</button>
+                                                    <button onClick={() => updateStat(a.id, 'assists', 1)} className="w-7 h-7 btn-red text-white rounded-lg font-black">+</button>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                     <button onClick={handleSave} className="w-full mt-8 bg-white text-black font-black py-5 rounded-2xl uppercase text-[11px] tracking-[0.2em] active:scale-95 transition-all">Finalizar Jogo</button>
+                                    <button onClick={() => { localStorage.removeItem('auth_elite'); window.location.reload(); }} className="w-full mt-4 text-[9px] font-black text-neutral-700 uppercase tracking-[0.2em] hover:text-white transition-colors">Encerrar Sessão</button>
                                 </div>
                             </div>
                         )}
 
                         {activeTab === 'ranking' && (
                             <div className="glass p-5 rounded-[2.5rem]">
-                                <h2 className="text-xl font-black italic text-blue-400 mb-6 uppercase text-center">Estatísticas</h2>
+                                <h2 className="text-xl font-black italic text-blue-400 mb-6 uppercase text-center">Ranking</h2>
                                 {rankingData.length > 1 ? Object.values(rankingData.slice(1).reduce((acc, row) => {
                                     const [nome, g, a] = row;
                                     if(!acc[nome]) acc[nome] = {nome, g: 0, a: 0};
@@ -216,10 +289,10 @@
                                         <div className="w-1/2 text-[11px] font-black uppercase truncate flex items-center gap-2">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : ''} {at.nome}</div>
                                         <div className="flex gap-4">
                                             <div className="text-center"><div className="text-[8px] font-bold text-blue-400 uppercase">Gols</div><div className="text-base font-black italic">{at.g}</div></div>
-                                            <div className="text-center"><div className="text-[8px] font-bold text-slate-500 uppercase">Assis</div><div className="text-base font-black italic">{at.a}</div></div>
+                                            <div className="text-center"><div className="text-[8px] font-bold text-red-400 uppercase">Assis</div><div className="text-base font-black italic">{at.a}</div></div>
                                         </div>
                                     </div>
-                                )) : <div className="text-center py-10 opacity-20 uppercase tracking-widest font-black">Carregando dados...</div>}
+                                )) : <div className="text-center py-10 opacity-20 uppercase font-black text-xs">Carregando...</div>}
                             </div>
                         )}
 
@@ -228,20 +301,22 @@
                                 <h2 className="text-xl font-black italic text-blue-400 mb-4 uppercase text-center">Histórico</h2>
                                 {lastGames.length > 1 ? lastGames.slice(1).reverse().map((g, i) => (
                                     <div key={i} className="glass p-5 rounded-[2rem]">
-                                        <div className="text-[9px] text-center text-neutral-600 mb-2">{g[0]}</div>
+                                        <div className="text-[9px] text-center text-neutral-500 mb-2 font-black tracking-widest">{formatDate(g[0])}</div>
                                         <div className="flex justify-between items-center px-1">
                                             <div className="text-center w-1/3">
                                                 <div className="text-[10px] font-black text-blue-400 mb-1 truncate">{g[1]}</div>
-                                                <div className="text-4xl font-black italic">{g[2]}</div>
+                                                <div className="text-4xl font-black italic leading-none">{g[2]}</div>
+                                                <div className="text-[8px] font-bold text-neutral-500 uppercase mt-2">Faltas: {g[3] || 0}</div>
                                             </div>
                                             <div className="text-[10px] font-black opacity-10 italic">VS</div>
                                             <div className="text-center w-1/3">
-                                                <div className="text-[10px] font-black text-slate-400 mb-1 truncate">{g[6]}</div>
-                                                <div className="text-4xl font-black italic">{g[5]}</div>
+                                                <div className="text-[10px] font-black text-red-400 mb-1 truncate">{g[6]}</div>
+                                                <div className="text-4xl font-black italic leading-none text-red-100">{g[5]}</div>
+                                                <div className="text-[8px] font-bold text-neutral-500 uppercase mt-2">Faltas: {g[4] || 0}</div>
                                             </div>
                                         </div>
                                     </div>
-                                )) : <div className="text-center py-20 opacity-20 uppercase font-black">Sem registros.</div>}
+                                )) : <div className="text-center py-20 opacity-20 uppercase font-black text-xs">Sem registros.</div>}
                             </div>
                         )}
 
@@ -249,7 +324,7 @@
                             <div className="glass p-6 rounded-[2.5rem]">
                                 <h2 className="text-xl font-black italic text-blue-400 mb-6 uppercase text-center">Jogadores</h2>
                                 <div className="flex gap-2 mb-6">
-                                    <input id="newP" placeholder="NOME DO JOGADOR" className="flex-1 bg-black border border-white/10 p-4 rounded-xl text-xs font-black outline-none focus:border-blue-500" />
+                                    <input id="newP" placeholder="NOME DO JOGADOR" className="flex-1 bg-black border border-white/10 p-4 rounded-xl text-[10px] font-black outline-none focus:border-blue-500 uppercase" />
                                     <button onClick={() => {
                                         const n = document.getElementById('newP').value;
                                         if(n) { setAthletes([...athletes, {id: Date.now().toString(), name: n.toUpperCase()}]); document.getElementById('newP').value=''; }
