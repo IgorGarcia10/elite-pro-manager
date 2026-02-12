@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Elite Pro Manager - Fúria FS</title>
+    <title>Pro Manager - v4 - Fúria FS</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -27,8 +27,8 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         
-        // LINK ATUALIZADO DA SUA NOVA IMPLANTAÇÃO
-        const API_URL = "https://script.google.com/macros/s/AKfycbzF60aNU3ZnahsFLWWH39oUgHzrH0xzwLg_pfmNSIMbO_fsDhNEIbhFoeIogNSUS7FvGw/exec";
+        // SUA NOVA URL ATUALIZADA
+        const API_URL = "https://script.google.com/macros/s/AKfycbwJ90I7QjIl2g7AwEKGk5bTiclC9neyHKBB8i1BSadhAI40yRRUQuvn-b5Ak7vkqldDQA/exec";
 
         const App = () => {
             const [isAuthorized, setIsAuthorized] = useState(localStorage.getItem('auth_elite') === 'true');
@@ -52,7 +52,7 @@
             const [isRunning, setIsRunning] = useState(false);
             const [isEditingTime, setIsEditingTime] = useState(false);
 
-            // Carrega dados básicos após login
+            // Carrega Atletas (Sincronizado com a Planilha)
             useEffect(() => {
                 if(isAuthorized) {
                     setLoading(true);
@@ -65,7 +65,7 @@
                 }
             }, [isAuthorized]);
 
-            // Carrega ranking e histórico conforme navegação
+            // Carrega Ranking e Histórico
             useEffect(() => {
                 if(isAuthorized && (activeTab === 'ranking' || activeTab === 'placares')) {
                     setLoading(true);
@@ -77,21 +77,18 @@
                 }
             }, [activeTab, isAuthorized]);
 
-            // Timer do jogo
             useEffect(() => {
                 let interval;
                 if (isRunning && timeLeft > 0) interval = setInterval(() => setTimeLeft(p => p - 1), 1000);
                 return () => clearInterval(interval);
             }, [isRunning, timeLeft]);
 
-            // LOGIN SEGURO: VALIDA NO GOOGLE SCRIPT
             const handleLogin = async (e) => {
                 e.preventDefault();
                 setLoading(true);
                 try {
                     const response = await fetch(`${API_URL}?action=checkLogin&pin=${pinInput}`);
                     const data = await response.json();
-                    
                     if(data.auth === true) {
                         setIsAuthorized(true);
                         localStorage.setItem('auth_elite', 'true');
@@ -101,7 +98,7 @@
                         setTimeout(() => setLoginError(false), 2000);
                     }
                 } catch (err) {
-                    alert("Erro ao conectar ao servidor. Verifique o link da API.");
+                    alert("Erro ao conectar ao servidor.");
                 }
                 setLoading(false);
             };
@@ -148,9 +145,7 @@
                     const ath = athletes.find(a => a.id === id);
                     if (ath) statsDetalhadas[ath.name] = { g: matchStats[id].goals || 0, a: matchStats[id].assists || 0 };
                 });
-
                 const payload = { timestamp: new Date().toISOString(), teamA, teamB, scoreA, scoreB, foulsA, foulsB, elenco: athletes.map(a => a.name), stats: statsDetalhadas };
-
                 try {
                     await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
                     alert("✅ Estatísticas sincronizadas!");
@@ -159,26 +154,34 @@
                 setLoading(false);
             };
 
+            // SALVAMENTO PERMANENTE DE JOGADOR
+            const handleAddAthlete = async () => {
+                const input = document.getElementById('newP');
+                const name = input.value.trim().toUpperCase();
+                if(name) {
+                    setLoading(true);
+                    try {
+                        await fetch(API_URL, { 
+                            method: 'POST', 
+                            mode: 'no-cors', 
+                            body: JSON.stringify({ newPlayer: name }) 
+                        });
+                        setAthletes([...athletes, { id: Date.now().toString(), name: name }]);
+                        input.value = '';
+                    } catch (e) { alert("Erro ao salvar jogador na planilha."); }
+                    setLoading(false);
+                }
+            };
+
             if (!isAuthorized) {
                 return (
                     <div className="h-screen w-full flex flex-col items-center justify-center p-6 bg-black">
                         <div className="w-full max-w-sm glass p-8 rounded-[3rem] text-center border-blue-900/20 border-2">
-                            <h1 className="text-3xl font-black italic text-blue-500 mb-2 italic">ELITE PRO</h1>
+                            <h1 className="text-3xl font-black italic text-blue-500 mb-2">ELITE PRO</h1>
                             <p className="text-neutral-500 text-[10px] uppercase tracking-[0.3em] mb-10">Controle de Acesso</p>
-                            
                             <form onSubmit={handleLogin} className="space-y-6">
-                                <input 
-                                    type="password" 
-                                    inputMode="numeric"
-                                    value={pinInput}
-                                    onChange={(e) => setPinInput(e.target.value)}
-                                    placeholder="PIN" 
-                                    className={`w-full bg-neutral-900/50 border-2 ${loginError ? 'border-red-600' : 'border-white/10'} p-6 rounded-2xl text-center text-3xl font-black tracking-[0.5em] outline-none focus:border-blue-500 transition-all`}
-                                    autoFocus
-                                />
-                                <button type="submit" disabled={loading} className="w-full btn-cobalt text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all">
-                                    {loading ? 'Validando...' : 'Entrar'}
-                                </button>
+                                <input type="password" inputMode="numeric" value={pinInput} onChange={(e) => setPinInput(e.target.value)} placeholder="PIN" className={`w-full bg-neutral-900/50 border-2 ${loginError ? 'border-red-600' : 'border-white/10'} p-6 rounded-2xl text-center text-3xl font-black tracking-[0.5em] outline-none focus:border-blue-500 transition-all`} autoFocus />
+                                <button type="submit" disabled={loading} className="w-full btn-cobalt text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all">{loading ? 'Validando...' : 'Entrar'}</button>
                                 {loginError && <p className="text-red-500 text-[10px] font-black uppercase animate-bounce mt-4">PIN INCORRETO</p>}
                             </form>
                         </div>
@@ -190,9 +193,7 @@
                 <div className="min-h-screen pb-24 flex flex-col items-center">
                     <nav className="w-full flex justify-around bg-neutral-900/90 backdrop-blur sticky top-0 z-50 border-b border-white/5">
                         {['match', 'roster', 'placares', 'ranking'].map(t => (
-                            <button key={t} onClick={() => setActiveTab(t)} className={`py-4 px-1 text-[10px] font-black uppercase tracking-tighter ${activeTab === t ? 'tab-active' : 'text-neutral-500'}`}>
-                                {t === 'match' ? 'Jogo' : t === 'roster' ? 'Jogadores' : t === 'placares' ? 'Histórico' : 'Ranking'}
-                            </button>
+                            <button key={t} onClick={() => setActiveTab(t)} className={`py-4 px-1 text-[10px] font-black uppercase tracking-tighter ${activeTab === t ? 'tab-active' : 'text-neutral-500'}`}>{t === 'match' ? 'Jogo' : t === 'roster' ? 'Jogadores' : t === 'placares' ? 'Histórico' : 'Ranking'}</button>
                         ))}
                     </nav>
 
@@ -325,10 +326,7 @@
                                 <h2 className="text-xl font-black italic text-blue-400 mb-6 uppercase text-center">Jogadores</h2>
                                 <div className="flex gap-2 mb-6">
                                     <input id="newP" placeholder="NOME DO JOGADOR" className="flex-1 bg-black border border-white/10 p-4 rounded-xl text-[10px] font-black outline-none focus:border-blue-500 uppercase" />
-                                    <button onClick={() => {
-                                        const n = document.getElementById('newP').value;
-                                        if(n) { setAthletes([...athletes, {id: Date.now().toString(), name: n.toUpperCase()}]); document.getElementById('newP').value=''; }
-                                    }} className="btn-cobalt text-white px-6 rounded-xl font-black text-xl">+</button>
+                                    <button onClick={handleAddAthlete} className="btn-cobalt text-white px-6 rounded-xl font-black text-xl">+</button>
                                 </div>
                                 <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2">
                                     {athletes.map(a => (
